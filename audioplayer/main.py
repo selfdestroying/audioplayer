@@ -1,8 +1,72 @@
+import time
 import flet as ft
+
+MIN_HEIGHT = 300
+MIN_WIDTH = 500
+TRACK_TIME = 10
 
 
 def main(page: ft.Page):
-    page.add(ft.SafeArea(ft.Text("Hello, Flet!")))
+    page.window_width = MIN_WIDTH
+    page.window_height = MIN_HEIGHT
+    page.window_resizable = False
+    play_flag = True
+    current_track_time = 0
+
+    def formatted_time(sec: int) -> str:
+        minutes = sec // 60
+        sec = sec % 60
+        formatted_time = '{0}:{1:02d}'.format(minutes, sec)
+        return formatted_time
+
+    def pause(e):
+        nonlocal play_flag
+        buttons_row.controls[1] = ft.IconButton(ft.icons.PLAY_ARROW, on_click=play)
+        play_flag = False
+
+    def play(e):
+        nonlocal play_flag, current_track_time
+        play_flag = True
+        buttons_row.controls[1] = ft.IconButton(ft.icons.PAUSE, on_click=pause)
+        for i in range(current_track_time, TRACK_TIME + 1):
+            if play_flag:
+                print(play_flag)
+                track_length_bar.value = ((i * 100) / TRACK_TIME) * 0.01
+                current_track_time = i
+                current_time_text.value = formatted_time(current_track_time)
+                page.update()
+                time.sleep(1)
+        if current_track_time == TRACK_TIME:
+            current_track_time = 0
+            current_time_text.value = formatted_time(current_track_time)
+            track_length_bar.value = 0
+        buttons_row.controls[1] = ft.IconButton(ft.icons.PLAY_ARROW, on_click=play)
+        page.update()
+
+    play_pause_button = ft.IconButton(ft.icons.PLAY_ARROW, on_click=play)
+    next_button = ft.IconButton(ft.icons.SKIP_NEXT)
+    prev_button = ft.IconButton(ft.icons.SKIP_PREVIOUS)
+    current_time_text = ft.Text(value=formatted_time(current_track_time))
+    end_time = ft.Text(value=formatted_time(TRACK_TIME))
+    time_row = ft.Row(
+        [current_time_text,
+         end_time],
+        alignment=ft.MainAxisAlignment.SPACE_BETWEEN
+    )
+    track_length_bar = ft.ProgressBar(value=0)
+    buttons_row = ft.Row([prev_button, play_pause_button, next_button],
+                         alignment=ft.MainAxisAlignment.CENTER,
+                         )
+
+    page.add(
+        ft.Container(
+            content=ft.Column([time_row, track_length_bar, buttons_row], alignment=ft.MainAxisAlignment.CENTER),
+            height=MIN_HEIGHT,
+            width=MIN_WIDTH
+        ),
+    )
 
 
+if __name__ == '__main__':
+    ft.app(main)
 ft.app(main)
