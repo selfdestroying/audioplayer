@@ -18,7 +18,7 @@ def main(page: ft.Page):
     play_flag = True
     current_track_time = 0
     track_time = 0
-    track_list: dict[str, str] = {
+    track_list: dict[str, dict[str, str | int]] = {
     }
 
     # Formatting time in 00:00 format
@@ -32,21 +32,25 @@ def main(page: ft.Page):
     def format_file_name(raw_file_name: str) -> str:
         return raw_file_name[:-4]
 
-    def add_track(e):
-        nonlocal track_time, current_track_time
-        file_path = track_list[e.control.text]
-        track_name.value = e.control.text
-        # Get track time
-        track_time = int(pygame.mixer.Sound(file_path).get_length())
-
-
+    def reset():
+        nonlocal current_track_time
         current_track_time = 0
-        track_length_bar.value = 0
         current_time_text.value = format_time(current_track_time)
         end_time.value = format_time(track_time)
 
+        track_length_bar.value = 0
+
+        page.update()
+
+    def add_track(e):
+        reset()
+        file_path = track_list[e.control.text]['path']
+        track_name.value = e.control.text
+        end_time.value = format_time(track_list[e.control.text]['time'])
+
         pygame.mixer.music.load(file_path)
-        pygame.mixer.music.stop()
+        pause_track(e)
+        time.sleep(1)
         play_track(e)
         page.update()
 
@@ -68,48 +72,52 @@ def main(page: ft.Page):
 
     # Get track file function
     def show_file_name(e: ft.FilePickerResultEvent):
-        nonlocal track_time, current_track_time
+        nonlocal track_time
         # Get file name and file path
         file_path = e.files[0].path
-        file_name = e.files[0].name
+        track_name = e.files[0].name
+        track_time = int(pygame.mixer.Sound(file_path).get_length())
         # Change file name in formatted text
-        formatted_file_name = format_file_name(file_name)
+        formatted_file_name = format_file_name(track_name)
         # Add track to name list
-        track_list[formatted_file_name] = file_path
+        track_list[formatted_file_name] = {
+            'path': file_path,
+            'time': track_time
+        }
+        print(track_list)
+
         create_track_list()
 
-
-        current_track_time = 0
-        track_length_bar.value = 0
-        current_time_text.value = format_time(current_track_time)
-        end_time.value = format_time(track_time)
-
-        pause_track(e)
         page.update()
+
+    def animate_bar():
+        nonlocal current_track_time
+        for i in range(current_track_time, track_time + 1):
+            track_length_bar.value = ((i * 100) / track_time) * 0.01
+            current_track_time = i
+            current_time_text.value = format_time(current_track_time)
+            page.update()
+            time.sleep(1)
+            if not play_flag:
+                print('Exit')
+                break
 
     def pause_track(e):
         nonlocal play_flag
-        buttons_row.controls[1] = ft.IconButton(ft.icons.PLAY_ARROW, on_click=play_track)
         play_flag = False
+        buttons_row.controls[1] = ft.IconButton(ft.icons.PLAY_ARROW, on_click=play_track)
         pygame.mixer.music.pause()
 
     def play_track(e):
-        nonlocal play_flag, current_track_time
-        pygame.mixer.music.play(start=current_track_time)
+        nonlocal play_flag
         play_flag = True
+
+        pygame.mixer.music.play(start=current_track_time)
+
         buttons_row.controls[1] = ft.IconButton(ft.icons.PAUSE, on_click=pause_track)
-        for i in range(current_track_time, track_time + 1):
-            if play_flag:
-                track_length_bar.value = ((i * 100) / track_time) * 0.01
-                current_track_time = i
-                current_time_text.value = format_time(current_track_time)
-                page.update()
-                time.sleep(1)
-        if current_track_time == track_time:
-            current_track_time = 0
-            track_length_bar.value = 0
-            current_time_text.value = format_time(current_track_time)
+        animate_bar()
         buttons_row.controls[1] = ft.IconButton(ft.icons.PLAY_ARROW, on_click=play_track)
+
         page.update()
 
     # File picker
@@ -121,8 +129,9 @@ def main(page: ft.Page):
     buttons_row = ft.Row([prev_button, play_pause_button, next_button],
                          alignment=ft.MainAxisAlignment.CENTER,
                          )
-    add_track_button = ft.IconButton(
-        ft.icons.ADD,
+    add_track_button = ft.TextButton(
+        text='Add Track',
+        icon=ft.icons.ADD,
         on_click=lambda e: file_picker.pick_files(
             allow_multiple=True,
             file_type=ft.FilePickerFileType.AUDIO),
