@@ -11,15 +11,8 @@ def main(page: ft.Page):
     page.window_width = MIN_WIDTH
     page.window_height = MIN_HEIGHT
     page.window_resizable = False
-    # Sound init
-    pygame.mixer.pre_init(44100, -16, 2, 2048)
-    pygame.mixer.init()
-    # Other variables
-    play_flag = True
-    current_track_time = 0
-    track_time = 0
-    track_list: dict[str, dict[str, str | int]] = {
-    }
+    track_list = {}
+    audio: type(ft.Audio())
 
     # Formatting time in 00:00 format
     def format_time(sec: int) -> str:
@@ -28,104 +21,77 @@ def main(page: ft.Page):
         formatted_time = '{0:02d}:{1:02d}'.format(minutes, sec)
         return formatted_time
 
-    # Formatting file name without file extension
-    def format_file_name(raw_file_name: str) -> str:
-        return raw_file_name[:-4]
+    def change_volume(e):
+        nonlocal audio
+        audio.volume = float(e.data) / 100
+        print(audio.volume)
 
-    def reset():
-        nonlocal current_track_time
-        current_track_time = 0
-        current_time_text.value = format_time(current_track_time)
-        end_time.value = format_time(track_time)
-
-        track_length_bar.value = 0
-
+    def change_bar(e, duration):
+        track_length_bar.value = e.data
+        track_length_bar.value = int(e.data) / duration
+        current_time.value = format_time(int(e.data) // 1000)
         page.update()
 
-    def add_track(e):
-        reset()
-        file_path = track_list[e.control.text]['path']
-        track_name.value = e.control.text
-        end_time.value = format_time(track_list[e.control.text]['time'])
-
-        pygame.mixer.music.load(file_path)
-        pause_track(e)
-        time.sleep(1)
-        play_track(e)
+    def play_pause():
+        nonlocal audio
+        if play_pause_button.icon == ft.icons.PAUSE:
+            play_pause_button.icon = ft.icons.PLAY_ARROW
+            audio.pause()
+        elif play_pause_button.icon == ft.icons.PLAY_ARROW:
+            play_pause_button.icon = ft.icons.PAUSE
+            audio.resume()
         page.update()
 
-    def create_track_list():
-        track_list_view.controls = [ft.ElevatedButton(f"{i}",
-                                                      style=ft.ButtonStyle(
-                                                          shape={
-                                                              ft.MaterialState.DEFAULT: ft.RoundedRectangleBorder()
-                                                          },
-                                                          bgcolor={
-                                                              ft.MaterialState.DEFAULT: ft.colors.GREY_900,
-                                                              ft.MaterialState.HOVERED: ft.colors.GREY_800
-                                                          },
-                                                          color={
-                                                              ft.MaterialState.DEFAULT: ft.colors.WHITE70
-                                                          }
+    def set_text(file_name, duration):
+        track_name.value = file_name
+        end_time.value = format_time(duration // 1000)
+        current_time.value = format_time(0)
+        page.update()
 
-                                                      ), on_click=add_track) for i in track_list.keys()]
+    def configure_track(file_path, file_name):
+        nonlocal audio
+        if type(ft.Audio()) in [type(i) for i in page.overlay]:
+            page.overlay.pop()
+        audio = ft.Audio(
+            src=file_path,
+            autoplay=False,
+            volume=1,
+            balance=0,
+            on_loaded=lambda _: print("Loaded"),
+            on_position_changed=lambda e: change_bar(e, audio.get_duration())
+        )
+        page.overlay.append(audio)
+        audio.volume = 0.1
+        page.update()
+        time.sleep(0.1)
+        set_text(file_name, audio.get_duration())
+        audio.play()
+        play_pause_button.icon = ft.icons.PAUSE
+        volume_slider.disabled = False
+        play_pause_button.disabled = False
+        prev_button.disabled = False
+        next_button.disabled = False
+        page.update()
 
-    # Get track file function
-    def show_file_name(e: ft.FilePickerResultEvent):
-        nonlocal track_time
-        # Get file name and file path
+    def load_track(e):
+        nonlocal track_list
+        file_name = e.files[0].name
         file_path = e.files[0].path
-        track_name = e.files[0].name
-        track_time = int(pygame.mixer.Sound(file_path).get_length())
-        # Change file name in formatted text
-        formatted_file_name = format_file_name(track_name)
-        # Add track to name list
-        track_list[formatted_file_name] = {
-            'path': file_path,
-            'time': track_time
-        }
-        print(track_list)
-
-        create_track_list()
-
-        page.update()
-
-    def animate_bar():
-        nonlocal current_track_time
-        for i in range(current_track_time, track_time + 1):
-            track_length_bar.value = ((i * 100) / track_time) * 0.01
-            current_track_time = i
-            current_time_text.value = format_time(current_track_time)
+        if file_name not in [i.text for i in track_list_view.controls]:
+            track_list[file_name] = file_path
+            print(track_list)
+            track_list_view.controls.append(
+                ft.ElevatedButton(e.files[0].name, on_click=lambda _: configure_track(file_path, file_name)))
             page.update()
-            time.sleep(1)
-            if not play_flag:
-                print('Exit')
-                break
-
-    def pause_track(e):
-        nonlocal play_flag
-        play_flag = False
-        buttons_row.controls[1] = ft.IconButton(ft.icons.PLAY_ARROW, on_click=play_track)
-        pygame.mixer.music.pause()
-
-    def play_track(e):
-        nonlocal play_flag
-        play_flag = True
-
-        pygame.mixer.music.play(start=current_track_time)
-
-        buttons_row.controls[1] = ft.IconButton(ft.icons.PAUSE, on_click=pause_track)
-        animate_bar()
-        buttons_row.controls[1] = ft.IconButton(ft.icons.PLAY_ARROW, on_click=play_track)
-
-        page.update()
+        else:
+            print('Track always in tracklist')
 
     # File picker
-    file_picker = ft.FilePicker(on_result=show_file_name)
+    file_picker = ft.FilePicker(on_result=load_track)
     # Buttons
-    play_pause_button = ft.IconButton(ft.icons.PLAY_ARROW, on_click=play_track)
-    next_button = ft.IconButton(ft.icons.SKIP_NEXT)
-    prev_button = ft.IconButton(ft.icons.SKIP_PREVIOUS)
+    play_pause_button = ft.IconButton(ft.icons.PLAY_ARROW, disabled=True, on_click=lambda _: play_pause())
+    next_button = ft.IconButton(ft.icons.SKIP_NEXT, disabled=True)
+    prev_button = ft.IconButton(ft.icons.SKIP_PREVIOUS, disabled=True)
     buttons_row = ft.Row([prev_button, play_pause_button, next_button],
                          alignment=ft.MainAxisAlignment.CENTER,
                          )
@@ -137,25 +103,36 @@ def main(page: ft.Page):
             file_type=ft.FilePickerFileType.AUDIO),
     )
     # Time text
-    current_time_text = ft.Text(value=format_time(current_track_time))
-    track_name = ft.Text(value='', text_align=ft.TextAlign.CENTER)
-    end_time = ft.Text(value=format_time(track_time))
+    track_name = ft.Text(value='-TRACK NAME-', text_align=ft.TextAlign.CENTER)
+    current_time = ft.Text(value='--:--')
+    end_time = ft.Text(value='--:--')
     time_row = ft.Row(
-        [current_time_text,
+        [current_time,
          end_time],
         alignment=ft.MainAxisAlignment.SPACE_BETWEEN
     )
     # Progress bar
     track_length_bar = ft.ProgressBar(value=0)
-
+    # Volume slider
+    volume_slider = ft.Slider(min=0,
+                              max=100,
+                              divisions=10,
+                              disabled=True,
+                              label="{value}%",
+                              on_change=lambda e: change_volume(e))
     # Track list
     track_list_view = ft.ListView(expand=True, spacing=2)
-
     # Add elems to interface
     page.controls.append(
         ft.Column(
             [ft.Row([track_name], alignment=ft.MainAxisAlignment.CENTER), time_row, track_length_bar, buttons_row,
-             add_track_button],
+             ft.Row(
+                 [
+                     add_track_button,
+                     volume_slider
+                 ],
+                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN
+             )],
             alignment=ft.MainAxisAlignment.CENTER),
     )
     page.controls.append(track_list_view)
@@ -164,4 +141,4 @@ def main(page: ft.Page):
 
 
 if __name__ == '__main__':
-    ft.app(main, upload_dir='uploads')
+    ft.app(main)
